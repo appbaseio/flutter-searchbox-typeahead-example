@@ -1,117 +1,161 @@
 import 'package:flutter/material.dart';
-
+import 'package:searchbase/searchbase.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
+import 'package:flutter_searchbox/flutter_searchbox.dart';
+import 'results.dart';
+import 'author_filter.dart';
 void main() {
-  runApp(MyApp());
+  runApp(FlutterSearchBoxApp());
 }
-
-class MyApp extends StatelessWidget {
+class FlutterSearchBoxApp extends StatelessWidget {
+  // Avoid creating searchbase instance in build method
+  // to preserve state on hot reloading
+  final searchbaseInstance = SearchBase(
+      'good-books-ds',
+      'https://arc-cluster-appbase-demo-6pjy6z.searchbase.io',
+      'a03a1cb71321:75b6603d-9456-4a5a-af6b-a487b309eb61',
+      appbaseConfig: AppbaseSettings(
+          recordAnalytics: true,
+          // Use unique user id to personalize the recent searches
+          userId: 'jon@appbase.io'));
+  FlutterSearchBoxApp({Key key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    // The SearchBaseProvider should wrap your MaterialApp or WidgetsApp. This will
+    // ensure all routes have access to the store.
+    return SearchBaseProvider(
+      // Pass the searchbase instance to the SearchBaseProvider. Any ancestor `SearchWidgetConnector`
+      // Widgets will find and use this value as the `SearchWidget`.
+      searchbase: searchbaseInstance,
+      child: MaterialApp(
+        title: "SearchBox Demo",
+        theme: ThemeData(
+          primarySwatch: Colors.blue,
+          visualDensity: VisualDensity.adaptivePlatformDensity,
+        ),
+        home: HomePage(),
+      ),
+    );
+  }
+}
+class HomePage extends StatelessWidget {
+  final TextEditingController _typeAheadController = TextEditingController();
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'SearchBox Demo',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
         primarySwatch: Colors.blue,
-        // This makes the visual density adapt to the platform that you run
-        // the app on. For desktop platforms, the controls will be smaller and
-        // closer together (more dense) than on mobile platforms.
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  MyHomePage({Key key, this.title}) : super(key: key);
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  _MyHomePageState createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Text(
-              'You have pushed the button this many times:',
+      home: Scaffold(
+          appBar: AppBar(
+            title: Text('SearchBox Demo'),
+          ),
+          body: Column(children: <Widget>[
+            SearchWidgetConnector(
+              id: 'search-widget',
+              enablePopularSuggestions: true,
+              maxPopularSuggestions: 3,
+              triggerQueryOnInit: false,
+              size: 5,
+              subscribeTo: [],
+              dataField: [
+                {'field': 'original_title', 'weight': 1},
+                {'field': 'original_title.search', 'weight': 3}
+              ],
+              builder: (context, searchWidget) => TypeAheadField(
+                textFieldConfiguration: TextFieldConfiguration(
+                    style: DefaultTextStyle.of(context)
+                        .style
+                        .copyWith(fontStyle: FontStyle.italic),
+                    controller: this._typeAheadController,
+                    decoration: InputDecoration(
+                        border: OutlineInputBorder(),
+                        hintText: "Search for books")),
+                suggestionsCallback: (pattern) async {
+                  // Set value to search widget
+                  searchWidget.setValue(pattern);
+                  // If value is empty display recent searches as suggestions
+                  if (pattern == "") {
+                    return await searchWidget.getRecentSearches();
+                  }
+                  // Trigger suggestions query
+                  await searchWidget.triggerDefaultQuery();
+                  // Return suggestions
+                  return searchWidget.suggestions;
+                },
+                itemBuilder: (context, Suggestion suggestion) {
+                  return ListTile(
+                    leading: suggestion.isRecentSearch
+                        ? Icon(Icons.history)
+                        : suggestion.isPopularSuggestion
+                            ? Icon(Icons.trending_up)
+                            : Icon(Icons.search),
+                    title: Text(suggestion.label),
+                  );
+                },
+                onSuggestionSelected: (Suggestion suggestion) {
+                  // Set controller value
+                  this._typeAheadController.text = suggestion.value;
+                  // Set suggestion value to searchWidget
+                  // and trigger custom query so watcher components can update
+                  searchWidget.setValue(suggestion.value,
+                      options: Options(triggerCustomQuery: true));
+                  // trigger suggestion click analytics
+                  try {
+                    String objectId;
+                    if (suggestion.source != null &&
+                        suggestion.source['_id'] != null) {
+                      objectId = suggestion.source['_id'].toString();
+                    }
+                    if (objectId != "" && suggestion.clickId != null) {
+                      searchWidget.recordClick({objectId: suggestion.clickId},
+                          isSuggestionClick: true);
+                    }
+                  } catch (e) {
+                    print(e);
+                  }
+                },
+              ),
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headline4,
+            Expanded(
+              // A custom UI widget to render a list of results
+              child: SearchWidgetConnector(
+                  id: 'result-widget',
+                  dataField: 'original_title',
+                  react: {
+                    'and': ['search-widget', 'author-filter'],
+                  },
+                  size: 10,
+                  triggerQueryOnInit: true,
+                  preserveResults: true,
+                  builder: (context, searchWidget) =>
+                      ResultsWidget(searchWidget)),
             ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+          ]),
+          // A custom UI widget to render a list of authors
+          drawer: SearchWidgetConnector(
+            id: 'author-filter',
+            type: QueryType.term,
+            dataField: "authors.keyword",
+            size: 10,
+            // Initialize with default value
+            value: List<String>(),
+            react: {
+              'and': ['search-widget']
+            },
+            builder: (context, searchWidget) {
+              // Call searchWidget's query at first time
+              if (searchWidget.query == null) {
+                searchWidget.triggerDefaultQuery();
+              }
+              return AuthorFilter(searchWidget);
+            },
+            // Avoid fetching query for each open/close action instead call it manually
+            triggerQueryOnInit: false,
+          )),
     );
   }
 }
